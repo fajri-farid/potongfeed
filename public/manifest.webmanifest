@@ -1,0 +1,39 @@
+{
+  "name": "PotongFeed — Pemotong Grid Instagram HD & Safe Area",
+  "short_name": "PotongFeed",
+  "description": "Potong foto menjadi grid Instagram sesuai standar terbaru dengan panduan safe area dan preview interaktif. 100% lokal di browser tanpa upload server.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fafafa",
+  "theme_color": "#ffffff",
+  "lang": "id",
+  "categories": ["photo", "utilities", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
