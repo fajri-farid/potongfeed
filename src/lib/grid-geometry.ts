@@ -437,6 +437,50 @@ export function computeCoverRect(
   };
 }
 
+export const CENTER_SNAP_THRESHOLD_PX = 8;
+const MIN_PANNABLE_TRAVEL_PX = 1;
+
+export interface CenterSnapResult {
+  transform: CompositionTransform;
+  snappedX: boolean;
+  snappedY: boolean;
+}
+
+function computePreviewPanTravelPx(
+  transform: CompositionTransform,
+  sourceSize: Dimensions,
+  gridConfig: GridLayoutConfig,
+  previewSize: Dimensions,
+): { maxTravelX: number; maxTravelY: number } | null {
+  if (
+    !Number.isFinite(previewSize.width) ||
+    !Number.isFinite(previewSize.height) ||
+    previewSize.width <= 0 ||
+    previewSize.height <= 0
+  ) {
+    return null;
+  }
+
+  const safeGrid = normalizeGridLayoutConfig(gridConfig);
+  const ratio = getTileAspectRatio(safeGrid.aspectPreset);
+  const visibleWidthFraction = getHorizontalProfileVisibleFraction(safeGrid.aspectPreset);
+  const effectiveColumnsSpan = (safeGrid.columns - 1) * visibleWidthFraction + 1;
+  const placement = computeCompositionRects(
+    sourceSize.width,
+    sourceSize.height,
+    effectiveColumnsSpan,
+    safeGrid.rows / ratio,
+    transform,
+  );
+
+  const scaledPreviewW = placement.normalizedImageRect.width * previewSize.width;
+  const scaledPreviewH = placement.normalizedImageRect.height * previewSize.height;
+  return {
+    maxTravelX: Math.abs(scaledPreviewW - previewSize.width) / 2,
+    maxTravelY: Math.abs(scaledPreviewH - previewSize.height) / 2,
+  };
+}
+
 /**
  * Mengonversi geseran piksel mouse/sentuhan pada kanvas preview menjadi pembaruan
  * `offsetX` / `offsetY` ternormalisasi `[-1, 1]` yang selaras 1:1 dengan kursor.
@@ -449,31 +493,11 @@ export function applyPanPixelDelta(
   previewSize: Dimensions,
 ): CompositionTransform {
   const safeTransform = normalizeCompositionTransform(transform);
-  if (
-    !Number.isFinite(previewSize.width) ||
-    !Number.isFinite(previewSize.height) ||
-    previewSize.width <= 0 ||
-    previewSize.height <= 0
-  ) {
+  const travel = computePreviewPanTravelPx(safeTransform, sourceSize, gridConfig, previewSize);
+  if (!travel) {
     return safeTransform;
   }
-
-  const safeGrid = normalizeGridLayoutConfig(gridConfig);
-  const ratio = getTileAspectRatio(safeGrid.aspectPreset);
-  const visibleWidthFraction = getHorizontalProfileVisibleFraction(safeGrid.aspectPreset);
-  const effectiveColumnsSpan = (safeGrid.columns - 1) * visibleWidthFraction + 1;
-  const placement = computeCompositionRects(
-    sourceSize.width,
-    sourceSize.height,
-    effectiveColumnsSpan,
-    safeGrid.rows / ratio,
-    safeTransform,
-  );
-
-  const scaledPreviewW = placement.normalizedImageRect.width * previewSize.width;
-  const scaledPreviewH = placement.normalizedImageRect.height * previewSize.height;
-  const maxTravelX = Math.abs(scaledPreviewW - previewSize.width) / 2;
-  const maxTravelY = Math.abs(scaledPreviewH - previewSize.height) / 2;
+  const { maxTravelX, maxTravelY } = travel;
 
   const nextOffsetX =
     maxTravelX > 0.0001
@@ -488,6 +512,46 @@ export function applyPanPixelDelta(
     ...safeTransform,
     offsetX: nextOffsetX,
     offsetY: nextOffsetY,
+  };
+}
+
+/**
+ * Menempelkan `offsetX` / `offsetY` secara independen ke pusat kanvas (`0`) bila
+ * jarak posisi mentah pada kanvas preview berada di dalam ambang piksel magnet.
+ */
+export function snapTransformToCenter(
+  transform: CompositionTransform,
+  sourceSize: Dimensions,
+  gridConfig: GridLayoutConfig,
+  previewSize: Dimensions,
+  thresholdPx: number = CENTER_SNAP_THRESHOLD_PX,
+): CenterSnapResult {
+  const safeTransform = normalizeCompositionTransform(transform);
+  const safeThreshold =
+    Number.isFinite(thresholdPx) && thresholdPx >= 0 ? thresholdPx : CENTER_SNAP_THRESHOLD_PX;
+  const travel = computePreviewPanTravelPx(safeTransform, sourceSize, gridConfig, previewSize);
+  if (!travel) {
+    return { transform: safeTransform, snappedX: false, snappedY: false };
+  }
+  const { maxTravelX, maxTravelY } = travel;
+
+  const snappedX =
+    safeThreshold > 0 &&
+    maxTravelX > MIN_PANNABLE_TRAVEL_PX &&
+    Math.abs(safeTransform.offsetX * maxTravelX) <= safeThreshold;
+  const snappedY =
+    safeThreshold > 0 &&
+    maxTravelY > MIN_PANNABLE_TRAVEL_PX &&
+    Math.abs(safeTransform.offsetY * maxTravelY) <= safeThreshold;
+
+  return {
+    transform: {
+      ...safeTransform,
+      offsetX: snappedX ? 0 : safeTransform.offsetX,
+      offsetY: snappedY ? 0 : safeTransform.offsetY,
+    },
+    snappedX,
+    snappedY,
   };
 }
 

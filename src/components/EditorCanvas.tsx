@@ -11,6 +11,7 @@ import {
   getMinZoomForMode,
   isValidHexColor,
   normalizeCompositionTransform,
+  snapTransformToCenter,
   stepCanvasZoom,
 } from "@/lib/grid-geometry";
 import type {
@@ -63,6 +64,8 @@ export function EditorCanvas({
     pointerId: number;
     lastX: number;
     lastY: number;
+    rawOffsetX: number;
+    rawOffsetY: number;
   } | null>(null);
   const pinchSessionRef = useRef<{
     initialDistance: number;
@@ -75,6 +78,10 @@ export function EditorCanvas({
     onChangeTransform,
   });
   const [isDragging, setIsDragging] = useState(false);
+  const [snapGuides, setSnapGuides] = useState<{ x: boolean; y: boolean }>({
+    x: false,
+    y: false,
+  });
   const [showFullPhotoGhost, setShowFullPhotoGhost] = useState(true);
 
   useEffect(() => {
@@ -148,13 +155,17 @@ export function EditorCanvas({
     });
 
     if (activePointersRef.current.size === 1) {
+      const currentTransform = latestStateRef.current.transform;
       pinchSessionRef.current = null;
       dragSessionRef.current = {
         pointerId: event.pointerId,
         lastX: event.clientX,
         lastY: event.clientY,
+        rawOffsetX: currentTransform.offsetX,
+        rawOffsetY: currentTransform.offsetY,
       };
       setIsDragging(true);
+      setSnapGuides({ x: false, y: false });
       return;
     }
 
@@ -164,11 +175,12 @@ export function EditorCanvas({
       const metrics = getPinchMetrics(points);
       pinchSessionRef.current = {
         initialDistance: Math.max(1, metrics.distance),
-        initialZoom: transform.zoom,
+        initialZoom: latestStateRef.current.transform.zoom,
         prevMidX: metrics.midX,
         prevMidY: metrics.midY,
       };
       setIsDragging(true);
+      setSnapGuides({ x: false, y: false });
     }
   };
 
@@ -190,7 +202,7 @@ export function EditorCanvas({
       const session = pinchSessionRef.current;
 
       const zoomed = applyCanvasPinchZoom(
-        transform,
+        latestStateRef.current.transform,
         session.initialZoom,
         session.initialDistance,
         metrics.distance,
@@ -207,6 +219,7 @@ export function EditorCanvas({
         { x: deltaMidX, y: deltaMidY },
         { width: rect.width, height: rect.height },
       );
+      latestStateRef.current.transform = panned;
       onChangeTransform(panned);
       return;
     }
@@ -220,16 +233,38 @@ export function EditorCanvas({
     const deltaY = event.clientY - session.lastY;
     session.lastX = event.clientX;
     session.lastY = event.clientY;
+    if (deltaX === 0 && deltaY === 0) {
+      return;
+    }
 
-    const updated = applyPanPixelDelta(
-      transform,
+    const currentTransform = latestStateRef.current.transform;
+    const rawMoved = applyPanPixelDelta(
+      {
+        ...currentTransform,
+        offsetX: session.rawOffsetX,
+        offsetY: session.rawOffsetY,
+      },
       { width: sourceImage.naturalWidth, height: sourceImage.naturalHeight },
       gridConfig,
       { x: deltaX, y: deltaY },
       { width: rect.width, height: rect.height },
     );
+    session.rawOffsetX = rawMoved.offsetX;
+    session.rawOffsetY = rawMoved.offsetY;
 
-    onChangeTransform(updated);
+    const snapped = snapTransformToCenter(
+      rawMoved,
+      { width: sourceImage.naturalWidth, height: sourceImage.naturalHeight },
+      gridConfig,
+      { width: rect.width, height: rect.height },
+    );
+    setSnapGuides((prev) =>
+      prev.x === snapped.snappedX && prev.y === snapped.snappedY
+        ? prev
+        : { x: snapped.snappedX, y: snapped.snappedY },
+    );
+    latestStateRef.current.transform = snapped.transform;
+    onChangeTransform(snapped.transform);
   };
 
   const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -243,6 +278,7 @@ export function EditorCanvas({
 
     if (activePointersRef.current.size === 1) {
       const remaining = activePointersRef.current.entries().next().value;
+      const currentTransform = latestStateRef.current.transform;
       pinchSessionRef.current = null;
       if (remaining) {
         const [remainingId, pos] = remaining;
@@ -250,8 +286,11 @@ export function EditorCanvas({
           pointerId: remainingId,
           lastX: pos.x,
           lastY: pos.y,
+          rawOffsetX: currentTransform.offsetX,
+          rawOffsetY: currentTransform.offsetY,
         };
       }
+      setSnapGuides({ x: false, y: false });
       return;
     }
 
@@ -259,6 +298,7 @@ export function EditorCanvas({
       dragSessionRef.current = null;
       pinchSessionRef.current = null;
       setIsDragging(false);
+      setSnapGuides({ x: false, y: false });
     }
   };
 
@@ -517,6 +557,20 @@ export function EditorCanvas({
               </div>
             ))}
           </div>
+
+          {isDragging && snapGuides.x ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 left-1/2 z-20 w-[1.5px] -translate-x-1/2 bg-indigo-500 shadow-[0_0_0_1px_rgba(255,255,255,0.75)]"
+            />
+          ) : null}
+
+          {isDragging && snapGuides.y ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-1/2 z-20 h-[1.5px] -translate-y-1/2 bg-indigo-500 shadow-[0_0_0_1px_rgba(255,255,255,0.75)]"
+            />
+          ) : null}
         </div>
       </div>
 

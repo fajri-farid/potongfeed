@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CANVAS_ZOOM_STEP,
+  CENTER_SNAP_THRESHOLD_PX,
   DEFAULT_COMPOSITION_TRANSFORM,
   DEFAULT_EXPORT_SETTINGS,
   DEFAULT_GRID_CONFIG,
@@ -20,6 +21,7 @@ import {
   getTileAspectRatio,
   normalizeCompositionTransform,
   normalizeHexColor,
+  snapTransformToCenter,
   stepCanvasZoom,
 } from "@/lib/grid-geometry";
 
@@ -407,5 +409,50 @@ describe("grid-geometry", () => {
       120,
     );
     expect(invalidPinch.zoom).toBe(1.4);
+  });
+
+  it("menempelkan sumbu ke tengah secara independen dalam ambang piksel magnet dan lepas mulus di luar ambang", () => {
+    const grid34 = { aspectPreset: "3:4" as const, columns: 3 as const, rows: 3 };
+    // Di zoom 2.0 pada preview 360x480 untuk foto 3240x4320 -> maxTravelX = 180px, maxTravelY = 240px.
+    // offsetX = 6/180 (6px <= 8px) -> snap X; offsetY = -30/240 (-30px > 8px) -> lepas Y.
+    const rawNearCenterX = {
+      ...DEFAULT_COMPOSITION_TRANSFORM,
+      fitMode: "fill" as const,
+      zoom: 2.0,
+      offsetX: 6 / 180,
+      offsetY: -30 / 240,
+    };
+
+    const snapped = snapTransformToCenter(rawNearCenterX, { width: 3240, height: 4320 }, grid34, {
+      width: 360,
+      height: 480,
+    });
+    expect(snapped.snappedX).toBe(true);
+    expect(snapped.snappedY).toBe(false);
+    expect(snapped.transform.offsetX).toBe(0);
+    expect(snapped.transform.offsetY).toBeCloseTo(-30 / 240, 6);
+
+    // Keluar dari radius CENTER_SNAP_THRESHOLD_PX -> terlepas mulus ke posisi mentah
+    const outsideThreshold = snapTransformToCenter(
+      {
+        ...rawNearCenterX,
+        offsetX: (CENTER_SNAP_THRESHOLD_PX + 2) / 180,
+      },
+      { width: 3240, height: 4320 },
+      grid34,
+      { width: 360, height: 480 },
+    );
+    expect(outsideThreshold.snappedX).toBe(false);
+    expect(outsideThreshold.transform.offsetX).toBeCloseTo((CENTER_SNAP_THRESHOLD_PX + 2) / 180, 6);
+
+    // Sumbu yang tidak punya ruang geser (foto pas lebar bingkai di zoom 1.0) tidak memicu flag snap
+    const lockedAxisSnap = snapTransformToCenter(
+      { ...DEFAULT_COMPOSITION_TRANSFORM, fitMode: "fill", zoom: 1.0 },
+      { width: 3240, height: 6000 },
+      grid34,
+      { width: 360, height: 480 },
+    );
+    expect(lockedAxisSnap.snappedX).toBe(false);
+    expect(lockedAxisSnap.snappedY).toBe(true);
   });
 });
