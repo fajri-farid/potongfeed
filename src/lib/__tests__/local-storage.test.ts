@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_PREVIEW_IG_USERNAME,
   STORAGE_KEY_PREFERENCES,
   STORAGE_KEY_UPLOAD_CHECKLIST,
   buildImageChecklistSignature,
   clearUploadChecklist,
   getDefaultPreferences,
+  getPreviewAvatarInitials,
   loadPreferences,
   loadUploadChecklist,
+  normalizePreviewUsername,
+  sanitizePreviewUsernameInput,
   savePreferences,
   saveUploadChecklist,
 } from "@/lib/local-storage";
@@ -126,5 +130,26 @@ describe("local-storage", () => {
     expect(savePreferences(getDefaultPreferences(), failingStorage)).toBe(false);
     expect(loadUploadChecklist(failingStorage)).toBeNull();
     expect(clearUploadChecklist(failingStorage)).toBe(false);
+  });
+
+  it("menormalkan username mockup profil IG, inisial avatar, dan menyimpannya ke preferensi", () => {
+    expect(sanitizePreviewUsernameInput("  @Hydronex.US! ")).toBe("hydronex.us");
+    expect(normalizePreviewUsername("  @Toko_Kopi.ID  ")).toBe("toko_kopi.id");
+    expect(normalizePreviewUsername("   ...")).toBe(DEFAULT_PREVIEW_IG_USERNAME);
+    expect(normalizePreviewUsername(null)).toBe(DEFAULT_PREVIEW_IG_USERNAME);
+
+    expect(getPreviewAvatarInitials(DEFAULT_PREVIEW_IG_USERNAME)).toBe("PF");
+    expect(getPreviewAvatarInitials("hydronex.us")).toBe("HY");
+    expect(getPreviewAvatarInitials("_a")).toBe("A");
+
+    const memory = createMemoryStorage();
+    savePreferences(
+      {
+        ...getDefaultPreferences(),
+        previewUsername: "hydronex.us",
+      },
+      memory,
+    );
+    expect(loadPreferences(memory).previewUsername).toBe("hydronex.us");
   });
 });

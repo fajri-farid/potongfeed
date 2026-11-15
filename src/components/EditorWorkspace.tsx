@@ -17,7 +17,7 @@ import {
   normalizeCompositionTransform,
 } from "@/lib/grid-geometry";
 import { loadLocalImageFile, revokeSourceImageProxy } from "@/lib/image-loader";
-import { loadPreferences, savePreferences } from "@/lib/local-storage";
+import { DEFAULT_PREVIEW_IG_USERNAME, loadPreferences, savePreferences } from "@/lib/local-storage";
 import type {
   CompositionTransform,
   ExportSettings,
@@ -57,6 +57,9 @@ function EditorWorkspaceContent() {
   });
 
   const [safeAreaOptions, setSafeAreaOptions] = useState<SafeAreaOptions>(initialPrefs.safeArea);
+  const [previewUsername, setPreviewUsername] = useState<string>(
+    initialPrefs.previewUsername ?? DEFAULT_PREVIEW_IG_USERNAME,
+  );
 
   const [exportSettings, setExportSettings] = useState<ExportSettings>({
     format: initialPrefs.format,
@@ -85,11 +88,12 @@ function EditorWorkspaceContent() {
       backgroundType: transform.backgroundType,
       backgroundHex: transform.backgroundHex,
       safeArea: safeAreaOptions,
+      previewUsername,
       format: exportSettings.format,
       quality: exportSettings.quality,
       resolutionMode: exportSettings.resolutionMode,
     });
-  }, [gridConfig, transform, safeAreaOptions, exportSettings]);
+  }, [gridConfig, transform, safeAreaOptions, previewUsername, exportSettings]);
 
   const handleSelectFile = useCallback(async (file: File) => {
     setIsImageLoading(true);
@@ -351,8 +355,10 @@ function EditorWorkspaceContent() {
               sourceImage={sourceImage}
               transform={transform}
               safeAreaOptions={safeAreaOptions}
+              previewUsername={previewUsername}
               splitPlan={splitPlan}
               onChangeSafeAreaOptions={setSafeAreaOptions}
+              onChangePreviewUsername={setPreviewUsername}
             />
             <ExportPanel
               sourceImage={sourceImage}

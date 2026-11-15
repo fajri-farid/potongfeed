@@ -25,6 +25,8 @@ import type {
 
 export const STORAGE_KEY_PREFERENCES = "potongfeed:v4:preferences";
 export const STORAGE_KEY_UPLOAD_CHECKLIST = "potongfeed:v1:upload-checklist";
+export const DEFAULT_PREVIEW_IG_USERNAME = "potongfeed.id";
+export const MAX_PREVIEW_USERNAME_LENGTH = 30;
 
 export type StorageReader = Pick<Storage, "getItem">;
 export type StorageWriter = Pick<Storage, "setItem">;
@@ -63,6 +65,35 @@ function readBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
+/** Membersihkan karakter username Instagram saat diketik (huruf kecil, `[a-z0-9._]`, maks 30 karakter). */
+export function sanitizePreviewUsernameInput(raw: string): string {
+  return raw
+    .trimStart()
+    .replace(/^@+/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9._]/g, "")
+    .slice(0, MAX_PREVIEW_USERNAME_LENGTH);
+}
+
+/** Menormalkan username mockup profil IG dengan fallback ke `potongfeed.id` bila kosong/tidak valid. */
+export function normalizePreviewUsername(raw: string | null | undefined): string {
+  if (typeof raw !== "string") {
+    return DEFAULT_PREVIEW_IG_USERNAME;
+  }
+  const cleaned = sanitizePreviewUsernameInput(raw).replace(/^\.+|\.+$/g, "");
+  return cleaned.length > 0 ? cleaned : DEFAULT_PREVIEW_IG_USERNAME;
+}
+
+/** Menghasilkan inisial 1–2 huruf untuk avatar lingkaran pada mockup profil Instagram. */
+export function getPreviewAvatarInitials(username: string): string {
+  const normalized = normalizePreviewUsername(username);
+  if (normalized === DEFAULT_PREVIEW_IG_USERNAME) {
+    return "PF";
+  }
+  const lettersOnly = normalized.replace(/[^a-z0-9]/gi, "").toUpperCase();
+  return lettersOnly.slice(0, 2) || "IG";
+}
+
 /** Mengembalikan preferensi default editor PotongFeed. */
 export function getDefaultPreferences(): PersistedPreferences {
   return {
@@ -73,6 +104,7 @@ export function getDefaultPreferences(): PersistedPreferences {
     backgroundType: DEFAULT_COMPOSITION_TRANSFORM.backgroundType,
     backgroundHex: DEFAULT_COMPOSITION_TRANSFORM.backgroundHex,
     safeArea: { ...DEFAULT_SAFE_AREA_OPTIONS },
+    previewUsername: DEFAULT_PREVIEW_IG_USERNAME,
     format: DEFAULT_EXPORT_SETTINGS.format,
     quality: DEFAULT_EXPORT_SETTINGS.quality,
     resolutionMode: DEFAULT_EXPORT_SETTINGS.resolutionMode,
@@ -176,6 +208,10 @@ export function loadPreferences(
           defaults.safeArea.previewMode,
         ),
       },
+      previewUsername:
+        typeof parsed.previewUsername === "string"
+          ? normalizePreviewUsername(parsed.previewUsername)
+          : (defaults.previewUsername ?? DEFAULT_PREVIEW_IG_USERNAME),
       format: readEnum(parsed.format, EXPORT_FORMATS, defaults.format),
       quality: parsedQuality,
       resolutionMode: readEnum(parsed.resolutionMode, RESOLUTION_MODES, defaults.resolutionMode),

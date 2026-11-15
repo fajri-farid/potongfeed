@@ -158,6 +158,7 @@ export interface PersistedPreferences {
   backgroundType: FitBackgroundType;
   backgroundHex: string;
   safeArea: SafeAreaOptions;
+  previewUsername?: string;
   format: ExportFormat;
   quality: number;
   resolutionMode: ResolutionMode;

@@ -1,6 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { isValidHexColor } from "@/lib/grid-geometry";
+import {
+  DEFAULT_PREVIEW_IG_USERNAME,
+  MAX_PREVIEW_USERNAME_LENGTH,
+  getPreviewAvatarInitials,
+  normalizePreviewUsername,
+  sanitizePreviewUsernameInput,
+} from "@/lib/local-storage";
 import type {
   CompositionTransform,
   GridSplitPlan,
@@ -12,8 +20,10 @@ interface InstagramProfilePreviewProps {
   sourceImage: SourceImageMeta;
   transform: CompositionTransform;
   safeAreaOptions: SafeAreaOptions;
+  previewUsername: string;
   splitPlan: GridSplitPlan;
   onChangeSafeAreaOptions: (next: SafeAreaOptions) => void;
+  onChangePreviewUsername: (next: string) => void;
 }
 
 /**
@@ -23,9 +33,31 @@ export function InstagramProfilePreview({
   sourceImage,
   transform,
   safeAreaOptions,
+  previewUsername,
   splitPlan,
   onChangeSafeAreaOptions,
+  onChangePreviewUsername,
 }: InstagramProfilePreviewProps) {
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [draftUsername, setDraftUsername] = useState(previewUsername);
+
+  const normalizedUsername = normalizePreviewUsername(previewUsername);
+  const avatarInitials = getPreviewAvatarInitials(normalizedUsername);
+  const isCustomUsername = normalizedUsername !== DEFAULT_PREVIEW_IG_USERNAME;
+
+  const startEditingUsername = () => {
+    setDraftUsername(normalizedUsername);
+    setIsEditingUsername(true);
+  };
+
+  const commitUsername = () => {
+    const nextUsername = normalizePreviewUsername(draftUsername);
+    setIsEditingUsername(false);
+    setDraftUsername(nextUsername);
+    if (nextUsername !== normalizedUsername) {
+      onChangePreviewUsername(nextUsername);
+    }
+  };
   const { geometry, placement, safeArea, tiles } = splitPlan;
   const isProfileCropMode = safeAreaOptions.previewMode === "profile-3-4";
 
@@ -116,7 +148,56 @@ export function InstagramProfilePreview({
 
       <div className="mx-auto w-full max-w-[320px] overflow-hidden rounded-[26px] border border-zinc-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-2.5 text-xs font-semibold text-zinc-900">
-          <span>potongfeed.id</span>
+          {isEditingUsername ? (
+            <input
+              type="text"
+              autoFocus
+              value={draftUsername}
+              maxLength={MAX_PREVIEW_USERNAME_LENGTH}
+              placeholder={DEFAULT_PREVIEW_IG_USERNAME}
+              aria-label="Nama akun Instagram untuk preview"
+              onChange={(event) =>
+                setDraftUsername(sanitizePreviewUsernameInput(event.target.value))
+              }
+              onFocus={(event) => event.currentTarget.select()}
+              onBlur={commitUsername}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commitUsername();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  setIsEditingUsername(false);
+                  setDraftUsername(normalizedUsername);
+                }
+              }}
+              className="w-40 rounded-md border border-indigo-300 bg-indigo-50/40 px-1.5 py-0.5 text-xs font-semibold text-zinc-900 outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={startEditingUsername}
+              title="Klik untuk ganti nama akun Instagram"
+              aria-label={`Ubah nama akun Instagram (${normalizedUsername})`}
+              className="group -mx-1 inline-flex max-w-[185px] items-center gap-1 rounded px-1 py-0.5 text-left transition hover:bg-zinc-100"
+            >
+              <span className="truncate">{normalizedUsername}</span>
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+                className="h-3 w-3 shrink-0 text-zinc-300 transition group-hover:text-zinc-500"
+              >
+                <path
+                  d="M11.6 2.4a1.4 1.4 0 0 1 2 2L5.5 12.5 2.5 13.5l1-3 8.1-8.1Z"
+                  stroke="currentColor"
+                  strokeWidth="1.35"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
           <span className="font-mono text-[10px] text-zinc-400">
             {isProfileCropMode ? "Tampilan Profil" : `Ukuran ${geometry.aspectPreset}`}
           </span>
@@ -126,7 +207,7 @@ export function InstagramProfilePreview({
           <div className="space-y-2.5 border-b border-zinc-100 px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-700 ring-1 ring-indigo-200">
-                PF
+                {avatarInitials}
               </div>
               <div className="grid flex-1 grid-cols-3 text-center text-[11px]">
                 <div>
@@ -144,7 +225,9 @@ export function InstagramProfilePreview({
               </div>
             </div>
             <div>
-              <p className="text-[11px] font-semibold text-zinc-900">Akun Instagram Kamu</p>
+              <p className="text-[11px] font-semibold text-zinc-900">
+                {isCustomUsername ? `@${normalizedUsername}` : "Akun Instagram Kamu"}
+              </p>
               <p className="text-[10px] leading-snug text-zinc-500">
                 Begini tampilan foto kamu saat dilihat di halaman profil Instagram.
               </p>
