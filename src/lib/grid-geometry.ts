@@ -491,6 +491,50 @@ export function applyPanPixelDelta(
   };
 }
 
+export const CANVAS_ZOOM_STEP = 0.1;
+
+/** Menetapkan faktor zoom kanvas sesuai batas aman mode (`fill` 1.0–5.0, `fit` 0.5–5.0). */
+export function applyCanvasZoom(
+  transform: CompositionTransform,
+  nextZoom: number,
+): CompositionTransform {
+  return normalizeCompositionTransform({
+    ...transform,
+    zoom: nextZoom,
+  });
+}
+
+/** Mengubah faktor zoom kanvas secara bertahap dengan pembulatan rapi 2 desimal. */
+export function stepCanvasZoom(
+  transform: CompositionTransform,
+  delta: number,
+): CompositionTransform {
+  if (!Number.isFinite(delta)) {
+    return normalizeCompositionTransform(transform);
+  }
+  const roundedZoom = Math.round((transform.zoom + delta) * 100) / 100;
+  return applyCanvasZoom(transform, roundedZoom);
+}
+
+/** Menghitung zoom baru dari gesture cubit 2 jari (*pinch-to-zoom*) di layar sentuh. */
+export function applyCanvasPinchZoom(
+  transform: CompositionTransform,
+  startZoom: number,
+  startDistance: number,
+  currentDistance: number,
+): CompositionTransform {
+  if (
+    !Number.isFinite(startZoom) ||
+    !Number.isFinite(startDistance) ||
+    !Number.isFinite(currentDistance) ||
+    startDistance <= 0 ||
+    currentDistance <= 0
+  ) {
+    return normalizeCompositionTransform(transform);
+  }
+  return applyCanvasZoom(transform, startZoom * (currentDistance / startDistance));
+}
+
 /** Mengembalikan definisi pita bahaya potong Safe Area dan margin dalam 8%. */
 export function getSafeAreaBands(aspectPreset: AspectPreset): SafeAreaBands {
   return SAFE_AREA_BANDS_MAP[aspectPreset];

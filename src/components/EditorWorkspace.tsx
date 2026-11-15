@@ -290,7 +290,7 @@ function EditorWorkspaceContent() {
           />
         </main>
       ) : (
-        <main className="mx-auto grid w-full max-w-[1440px] flex-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[320px_minmax(0,1fr)_370px] xl:grid-cols-[340px_minmax(0,1fr)_400px]">
+        <main className="mx-auto grid w-full max-w-[1440px] flex-1 gap-5 px-4 pt-5 pb-20 sm:px-6 lg:grid-cols-[320px_minmax(0,1fr)_370px] lg:pb-5 xl:grid-cols-[340px_minmax(0,1fr)_400px]">
           <aside className={`space-y-4 ${mobileTab === "controls" ? "block" : "hidden lg:block"}`}>
             <DropzoneUpload
               sourceImage={sourceImage}
@@ -365,6 +365,20 @@ function EditorWorkspaceContent() {
           </aside>
         </main>
       )}
+
+      {sourceImage && mobileTab !== "preview" ? (
+        <button
+          type="button"
+          onClick={() => {
+            setMobileTab("preview");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className="fixed right-4 bottom-4 z-30 inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white shadow-lg ring-2 ring-white transition hover:bg-indigo-700 active:scale-95 lg:hidden"
+        >
+          <span>Lanjut Cek &amp; Unduh</span>
+          <span aria-hidden="true">→</span>
+        </button>
+      ) : null}
     </div>
   );
 }

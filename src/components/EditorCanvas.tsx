@@ -1,10 +1,17 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  CANVAS_ZOOM_STEP,
+  MAX_ZOOM,
+  applyCanvasPinchZoom,
+  applyCanvasZoom,
   applyPanPixelDelta,
+  clamp,
+  getMinZoomForMode,
   isValidHexColor,
   normalizeCompositionTransform,
+  stepCanvasZoom,
 } from "@/lib/grid-geometry";
 import type {
   CompositionTransform,
@@ -23,9 +30,24 @@ interface EditorCanvasProps {
   onChangeTransform: (next: CompositionTransform) => void;
 }
 
+function getPinchMetrics(points: Array<{ x: number; y: number }>): {
+  distance: number;
+  midX: number;
+  midY: number;
+} {
+  const [p1, p2] = points;
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  return {
+    distance: Math.hypot(dx, dy),
+    midX: (p1.x + p2.x) / 2,
+    midY: (p1.y + p2.y) / 2,
+  };
+}
+
 /**
- * Kanvas interaktif bergaya studio Figma untuk menggeser foto (mouse & sentuhan)
- * dengan overlay garis potong, pita batas 3:4 ↔ 4:5, dan zona aman 8% bebas selisih (zero-drift).
+ * Kanvas interaktif bergaya studio Figma untuk menggeser dan memperbesar foto langsung
+ * (mouse, sentuhan/cubit 2 jari, kontrol zoom di kanvas, & trackpad pinch) dengan overlay safe area bebas selisih.
  */
 export function EditorCanvas({
   sourceImage,
@@ -36,17 +58,62 @@ export function EditorCanvas({
   onChangeTransform,
 }: EditorCanvasProps) {
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const dragSessionRef = useRef<{
     pointerId: number;
     lastX: number;
     lastY: number;
   } | null>(null);
+  const pinchSessionRef = useRef<{
+    initialDistance: number;
+    initialZoom: number;
+    prevMidX: number;
+    prevMidY: number;
+  } | null>(null);
+  const latestStateRef = useRef({
+    transform,
+    onChangeTransform,
+  });
   const [isDragging, setIsDragging] = useState(false);
   const [showFullPhotoGhost, setShowFullPhotoGhost] = useState(true);
+
+  useEffect(() => {
+    latestStateRef.current = {
+      transform,
+      onChangeTransform,
+    };
+  }, [transform, onChangeTransform]);
+
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) {
+      return;
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) {
+        return;
+      }
+      event.preventDefault();
+
+      const { transform: currentTransform, onChangeTransform: updateTransform } =
+        latestStateRef.current;
+      const deltaMultiplier = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 120 : 1;
+      const clampedDeltaY = clamp(event.deltaY * deltaMultiplier, -120, 120, 0);
+      const scaleFactor = Math.exp(-clampedDeltaY * 0.0025);
+      updateTransform(applyCanvasZoom(currentTransform, currentTransform.zoom * scaleFactor));
+    };
+
+    frame.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      frame.removeEventListener("wheel", handleWheel);
+    };
+  }, []);
 
   const { geometry, placement, safeArea, tiles } = splitPlan;
   const masterAspect = geometry.masterWidth / geometry.masterHeight;
   const { normalizedImageRect } = placement;
+  const minZoom = getMinZoomForMode(transform.fitMode);
 
   const canPanX = Math.abs(normalizedImageRect.width - 1) > 0.002;
   const canPanY = Math.abs(normalizedImageRect.height - 1) > 0.002;
@@ -75,18 +142,77 @@ export function EditorCanvas({
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragSessionRef.current = {
-      pointerId: event.pointerId,
-      lastX: event.clientX,
-      lastY: event.clientY,
-    };
-    setIsDragging(true);
+    activePointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+
+    if (activePointersRef.current.size === 1) {
+      pinchSessionRef.current = null;
+      dragSessionRef.current = {
+        pointerId: event.pointerId,
+        lastX: event.clientX,
+        lastY: event.clientY,
+      };
+      setIsDragging(true);
+      return;
+    }
+
+    if (activePointersRef.current.size >= 2) {
+      dragSessionRef.current = null;
+      const points = Array.from(activePointersRef.current.values());
+      const metrics = getPinchMetrics(points);
+      pinchSessionRef.current = {
+        initialDistance: Math.max(1, metrics.distance),
+        initialZoom: transform.zoom,
+        prevMidX: metrics.midX,
+        prevMidY: metrics.midY,
+      };
+      setIsDragging(true);
+    }
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const session = dragSessionRef.current;
     const frame = frameRef.current;
-    if (!session || session.pointerId !== event.pointerId || !frame) {
+    if (!frame || !activePointersRef.current.has(event.pointerId)) {
+      return;
+    }
+
+    activePointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    const rect = frame.getBoundingClientRect();
+
+    if (activePointersRef.current.size >= 2 && pinchSessionRef.current) {
+      const points = Array.from(activePointersRef.current.values());
+      const metrics = getPinchMetrics(points);
+      const session = pinchSessionRef.current;
+
+      const zoomed = applyCanvasPinchZoom(
+        transform,
+        session.initialZoom,
+        session.initialDistance,
+        metrics.distance,
+      );
+      const deltaMidX = metrics.midX - session.prevMidX;
+      const deltaMidY = metrics.midY - session.prevMidY;
+      session.prevMidX = metrics.midX;
+      session.prevMidY = metrics.midY;
+
+      const panned = applyPanPixelDelta(
+        zoomed,
+        { width: sourceImage.naturalWidth, height: sourceImage.naturalHeight },
+        gridConfig,
+        { x: deltaMidX, y: deltaMidY },
+        { width: rect.width, height: rect.height },
+      );
+      onChangeTransform(panned);
+      return;
+    }
+
+    const session = dragSessionRef.current;
+    if (!session || session.pointerId !== event.pointerId) {
       return;
     }
 
@@ -95,7 +221,6 @@ export function EditorCanvas({
     session.lastX = event.clientX;
     session.lastY = event.clientY;
 
-    const rect = frame.getBoundingClientRect();
     const updated = applyPanPixelDelta(
       transform,
       { width: sourceImage.naturalWidth, height: sourceImage.naturalHeight },
@@ -108,15 +233,33 @@ export function EditorCanvas({
   };
 
   const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    const session = dragSessionRef.current;
-    if (!session || session.pointerId !== event.pointerId) {
+    if (!activePointersRef.current.has(event.pointerId)) {
       return;
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    dragSessionRef.current = null;
-    setIsDragging(false);
+    activePointersRef.current.delete(event.pointerId);
+
+    if (activePointersRef.current.size === 1) {
+      const remaining = activePointersRef.current.entries().next().value;
+      pinchSessionRef.current = null;
+      if (remaining) {
+        const [remainingId, pos] = remaining;
+        dragSessionRef.current = {
+          pointerId: remainingId,
+          lastX: pos.x,
+          lastY: pos.y,
+        };
+      }
+      return;
+    }
+
+    if (activePointersRef.current.size === 0) {
+      dragSessionRef.current = null;
+      pinchSessionRef.current = null;
+      setIsDragging(false);
+    }
   };
 
   const isCentered = Math.abs(transform.offsetX) < 0.002 && Math.abs(transform.offsetY) < 0.002;
@@ -240,9 +383,9 @@ export function EditorCanvas({
         style={{
           aspectRatio: String(masterAspect),
           width: masterAspect >= 0.85 ? "min(100%, 540px)" : "auto",
-          height: masterAspect < 0.85 ? "min(62vh, 560px)" : "auto",
+          height: masterAspect < 0.85 ? "min(58vh, 540px)" : "auto",
           maxWidth: "100%",
-          maxHeight: "64vh",
+          maxHeight: "60vh",
         }}
         className={`relative touch-none select-none ${
           isDragging ? "cursor-grabbing" : canPanX || canPanY ? "cursor-grab" : "cursor-default"
@@ -377,14 +520,55 @@ export function EditorCanvas({
         </div>
       </div>
 
-      <p className="z-20 mt-3 text-center text-[11px] text-zinc-600">
+      <div className="z-20 mt-3 flex w-full max-w-sm items-center gap-2 rounded-xl border border-zinc-200 bg-white/95 px-3 py-1.5 shadow-2xs">
+        <button
+          type="button"
+          disabled={transform.zoom <= minZoom + 0.001}
+          onClick={() => onChangeTransform(stepCanvasZoom(transform, -CANVAS_ZOOM_STEP))}
+          aria-label="Perkecil ukuran foto"
+          title="Perkecil foto (-10%)"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-sm font-bold text-zinc-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-40"
+        >
+          −
+        </button>
+
+        <input
+          type="range"
+          aria-label="Atur perbesaran foto di kanvas"
+          min={minZoom}
+          max={MAX_ZOOM}
+          step={0.01}
+          value={transform.zoom}
+          onChange={(event) =>
+            onChangeTransform(applyCanvasZoom(transform, Number(event.target.value)))
+          }
+          className="min-w-0 flex-1 accent-indigo-600"
+        />
+
+        <button
+          type="button"
+          disabled={transform.zoom >= MAX_ZOOM - 0.001}
+          onClick={() => onChangeTransform(stepCanvasZoom(transform, CANVAS_ZOOM_STEP))}
+          aria-label="Perbesar ukuran foto"
+          title="Perbesar foto (+10%)"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-sm font-bold text-zinc-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-40"
+        >
+          +
+        </button>
+
+        <span className="min-w-[3.4ch] text-right font-mono text-[11px] font-semibold text-zinc-800">
+          {Math.round(transform.zoom * 100)}%
+        </span>
+      </div>
+
+      <p className="z-20 mt-2 text-center text-[11px] text-zinc-600">
         {canPanX && canPanY
-          ? "Geser foto langsung di kanvas untuk mengatur posisi"
+          ? "Geser foto di kanvas & atur zoom dari slider di atas"
           : canPanX
-            ? "Geser kiri–kanan di kanvas (perbesar foto >100% untuk geser atas–bawah)"
+            ? "Geser kiri–kanan di kanvas (naikkan zoom untuk geser atas–bawah)"
             : canPanY
-              ? "Geser atas–bawah di kanvas (perbesar foto >100% untuk geser kiri–kanan)"
-              : "Foto pas dengan bingkai — perbesar foto (>100%) atau pilih 'Utuh + Latar' untuk menggeser"}{" "}
+              ? "Geser atas–bawah di kanvas (naikkan zoom untuk geser kiri–kanan)"
+              : "Foto pas dengan bingkai — naikkan zoom (>100%) atau pilih 'Utuh + Latar' untuk menggeser"}{" "}
         • Mulai posting dari <strong className="text-emerald-700">#1</strong> (pojok kanan bawah)
       </p>
     </div>

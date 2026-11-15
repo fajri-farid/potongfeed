@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  CANVAS_ZOOM_STEP,
   DEFAULT_COMPOSITION_TRANSFORM,
   DEFAULT_EXPORT_SETTINGS,
   DEFAULT_GRID_CONFIG,
+  MAX_ZOOM,
+  MIN_ZOOM_FILL,
+  MIN_ZOOM_FIT,
+  applyCanvasPinchZoom,
+  applyCanvasZoom,
   applyPanPixelDelta,
   calculateTargetTileDimensions,
   computeCompositionRects,
@@ -14,6 +20,7 @@ import {
   getTileAspectRatio,
   normalizeCompositionTransform,
   normalizeHexColor,
+  stepCanvasZoom,
 } from "@/lib/grid-geometry";
 
 describe("grid-geometry", () => {
@@ -375,5 +382,30 @@ describe("grid-geometry", () => {
     expect(cover.width).toBeCloseTo(2880);
     expect(cover.height).toBeCloseTo(1440);
     expect(cover.x).toBeCloseTo(-900);
+  });
+
+  it("menormalkan zoom kanvas dari slider, tombol step, dan pinch sesuai batas mode fill/fit", () => {
+    const fillZoomed = applyCanvasZoom(DEFAULT_COMPOSITION_TRANSFORM, 0.3);
+    expect(fillZoomed.zoom).toBe(MIN_ZOOM_FILL);
+
+    const fitZoomed = applyCanvasZoom({ ...DEFAULT_COMPOSITION_TRANSFORM, fitMode: "fit" }, 0.3);
+    expect(fitZoomed.zoom).toBe(MIN_ZOOM_FIT);
+
+    const steppedUp = stepCanvasZoom(DEFAULT_COMPOSITION_TRANSFORM, CANVAS_ZOOM_STEP);
+    expect(steppedUp.zoom).toBe(1.1);
+
+    const steppedClamped = stepCanvasZoom({ ...DEFAULT_COMPOSITION_TRANSFORM, zoom: 4.98 }, 0.2);
+    expect(steppedClamped.zoom).toBe(MAX_ZOOM);
+
+    const pinched = applyCanvasPinchZoom(DEFAULT_COMPOSITION_TRANSFORM, 1.2, 100, 150);
+    expect(pinched.zoom).toBeCloseTo(1.8, 5);
+
+    const invalidPinch = applyCanvasPinchZoom(
+      { ...DEFAULT_COMPOSITION_TRANSFORM, zoom: 1.4 },
+      1.4,
+      0,
+      120,
+    );
+    expect(invalidPinch.zoom).toBe(1.4);
   });
 });
