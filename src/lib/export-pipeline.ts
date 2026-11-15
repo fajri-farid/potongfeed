@@ -1,5 +1,11 @@
 import { zipSync, type Zippable } from "fflate";
 import {
+  DEFAULT_EXPORT_QUALITY,
+  MAX_EXPORT_QUALITY,
+  MIN_EXPORT_QUALITY,
+  clamp,
+} from "@/lib/grid-geometry";
+import {
   decodeSourceImageFromFile,
   detectBrowserImageCapabilities,
   type DecodedBitmapHandle,
@@ -16,6 +22,8 @@ import type {
   ExportSettings,
   GridLayoutConfig,
   GridSplitPlan,
+  MasterCanvasGeometry,
+  SourceImageMeta,
   SplitterWorkerRequest,
   SplitterWorkerResponse,
   TileSliceResult,
@@ -333,4 +341,64 @@ export async function exportGridTiles(
     mainThreadCanvasFactory: options.mainThreadCanvasFactory,
     decodeSource: options.decodeSource,
   });
+}
+
+export const IG_LARGE_TILE_THRESHOLD_BYTES = 1.5 * 1024 * 1024;
+
+export type ExportOptimizationHint = "use-ig-preset" | "use-jpeg" | null;
+
+/**
+ * Memperkirakan ukuran berkas hasil per foto dan total unduhan berdasarkan dimensi
+ * potongan, kepadatan piksel foto sumber, serta format (`png`, `jpeg`, `webp`).
+ */
+export function estimateOutputSizeBytes(
+  sourceImage: Pick<SourceImageMeta, "naturalWidth" | "naturalHeight" | "fileSizeBytes">,
+  geometry: Pick<MasterCanvasGeometry, "tileWidth" | "tileHeight">,
+  totalTiles: number,
+  exportSettings: ExportSettings,
+): { perTileBytes: number; totalBytes: number } {
+  const tilePixels = Math.max(1, geometry.tileWidth * geometry.tileHeight);
+  const sourcePixels = Math.max(1, sourceImage.naturalWidth * sourceImage.naturalHeight);
+  const sourceBpp = clamp(sourceImage.fileSizeBytes / sourcePixels, 0.18, 2.2, 0.75);
+  const safeQuality = clamp(
+    exportSettings.quality,
+    MIN_EXPORT_QUALITY,
+    MAX_EXPORT_QUALITY,
+    DEFAULT_EXPORT_QUALITY,
+  );
+  const qualityMultiplier = 0.7 + (safeQuality - 0.9) * 3;
+
+  let bpp: number;
+  if (exportSettings.format === "png") {
+    bpp = clamp(sourceBpp * 1.35, 0.45, 1.65, 1.0);
+  } else if (exportSettings.format === "webp") {
+    bpp = clamp(sourceBpp * 0.42, 0.12, 0.45, 0.28) * qualityMultiplier;
+  } else {
+    bpp = clamp(sourceBpp * 0.55, 0.16, 0.55, 0.35) * qualityMultiplier;
+  }
+
+  const perTileBytes = Math.max(25 * 1024, Math.round(tilePixels * bpp));
+  const totalBytes = perTileBytes * Math.max(1, totalTiles);
+  return { perTileBytes, totalBytes };
+}
+
+/**
+ * Menentukan saran optimasi ukuran berkas yang paling sesuai:
+ * 1) Jika memakai `native` dan per foto >= 1,5 MB, sarankan setelan optimal IG (`JPG · 1080 px`).
+ * 2) Jika sudah di `ig-1080` memakai `png` dan per foto >= 1,5 MB, sarankan ganti ke `JPG`.
+ */
+export function getExportOptimizationHint(
+  exportSettings: Pick<ExportSettings, "format" | "resolutionMode">,
+  perTileBytes: number,
+): ExportOptimizationHint {
+  if (!Number.isFinite(perTileBytes) || perTileBytes < IG_LARGE_TILE_THRESHOLD_BYTES) {
+    return null;
+  }
+  if (exportSettings.resolutionMode === "native") {
+    return "use-ig-preset";
+  }
+  if (exportSettings.format === "png") {
+    return "use-jpeg";
+  }
+  return null;
 }

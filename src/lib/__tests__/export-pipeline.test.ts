@@ -7,10 +7,13 @@ import {
   computeTileCropPlans,
 } from "@/lib/grid-geometry";
 import {
+  IG_LARGE_TILE_THRESHOLD_BYTES,
   buildZipFilename,
   bundleNamedEntriesToZip,
   createTilesZipBlob,
+  estimateOutputSizeBytes,
   exportGridTiles,
+  getExportOptimizationHint,
   type MinimalWorkerClient,
 } from "@/lib/export-pipeline";
 import type { Canvas2DContextLike, RenderCanvasLike } from "@/lib/tile-renderer";
@@ -243,5 +246,60 @@ describe("export-pipeline", () => {
 
     expect(postedTypes).toEqual(["split", "cancel"]);
     expect(terminated).toHaveBeenCalledTimes(1);
+  });
+
+  it("memperkirakan ukuran JPG jauh lebih hemat dan memilih saran optimasi sesuai mode resolusi", () => {
+    const sourceMeta = {
+      naturalWidth: 3240,
+      naturalHeight: 4050,
+      fileSizeBytes: 12_000_000,
+    };
+    const geometry = { tileWidth: 1080, tileHeight: 1350 };
+
+    const pngEstimate = estimateOutputSizeBytes(sourceMeta, geometry, 9, {
+      format: "png",
+      quality: 0.96,
+      resolutionMode: "ig-1080",
+    });
+    const jpegEstimate = estimateOutputSizeBytes(sourceMeta, geometry, 9, {
+      format: "jpeg",
+      quality: 0.96,
+      resolutionMode: "ig-1080",
+    });
+
+    expect(pngEstimate.perTileBytes).toBeGreaterThanOrEqual(IG_LARGE_TILE_THRESHOLD_BYTES);
+    expect(jpegEstimate.totalBytes).toBeLessThan(pngEstimate.totalBytes / 2);
+    expect(pngEstimate.totalBytes).toBe(pngEstimate.perTileBytes * 9);
+
+    expect(
+      getExportOptimizationHint(
+        { format: "png", resolutionMode: "ig-1080" },
+        pngEstimate.perTileBytes,
+      ),
+    ).toBe("use-jpeg");
+    expect(
+      getExportOptimizationHint(
+        { format: "png", resolutionMode: "native" },
+        pngEstimate.perTileBytes,
+      ),
+    ).toBe("use-ig-preset");
+    expect(
+      getExportOptimizationHint(
+        { format: "jpeg", resolutionMode: "native" },
+        pngEstimate.perTileBytes,
+      ),
+    ).toBe("use-ig-preset");
+    expect(
+      getExportOptimizationHint(
+        { format: "png", resolutionMode: "ig-1080" },
+        IG_LARGE_TILE_THRESHOLD_BYTES - 1,
+      ),
+    ).toBeNull();
+    expect(
+      getExportOptimizationHint(
+        { format: "jpeg", resolutionMode: "ig-1080" },
+        pngEstimate.perTileBytes,
+      ),
+    ).toBeNull();
   });
 });

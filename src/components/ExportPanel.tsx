@@ -4,14 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildZipFilename,
   createTilesZipBlob,
+  estimateOutputSizeBytes,
   exportGridTiles,
+  getExportOptimizationHint,
   triggerBrowserDownload,
 } from "@/lib/export-pipeline";
 import {
   DEFAULT_EXPORT_QUALITY,
   MAX_EXPORT_QUALITY,
   MIN_EXPORT_QUALITY,
-  clamp,
 } from "@/lib/grid-geometry";
 import {
   detectBrowserImageCapabilities,
@@ -25,7 +26,6 @@ import type {
   ExportSettings,
   GridLayoutConfig,
   GridSplitPlan,
-  MasterCanvasGeometry,
   ResolutionMode,
   SourceImageMeta,
   TileSliceResult,
@@ -45,10 +45,21 @@ interface ExportPanelProps {
   onChangeExportSettings: (next: ExportSettings) => void;
 }
 
-const FORMAT_OPTIONS: Array<{ value: ExportFormat; label: string; hint: string }> = [
-  { value: "png", label: "PNG (Disarankan)", hint: "Paling jernih · tanpa penurunan kualitas" },
-  { value: "jpeg", label: "JPG", hint: "Ukuran file lebih hemat" },
-  { value: "webp", label: "WebP", hint: "Ringan & tajam" },
+const QUICK_FORMAT_OPTIONS: Array<{
+  value: Extract<ExportFormat, "png" | "jpeg">;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "png",
+    label: "PNG · Desain & Teks",
+    hint: "Paling pas untuk poster, logo & tulisan",
+  },
+  {
+    value: "jpeg",
+    label: "JPG · Foto & Upload IG",
+    hint: "Tetap tajam & ~3× lebih ringan",
+  },
 ];
 
 const RESOLUTION_OPTIONS: Array<{ value: ResolutionMode; label: string; hint: string }> = [
@@ -82,37 +93,6 @@ function buildConfigFingerprint(
     transform,
     exportSettings,
   });
-}
-
-function estimateOutputSizeBytes(
-  sourceImage: SourceImageMeta,
-  geometry: MasterCanvasGeometry,
-  totalTiles: number,
-  exportSettings: ExportSettings,
-): { perTileBytes: number; totalBytes: number } {
-  const tilePixels = Math.max(1, geometry.tileWidth * geometry.tileHeight);
-  const sourcePixels = Math.max(1, sourceImage.naturalWidth * sourceImage.naturalHeight);
-  const sourceBpp = clamp(sourceImage.fileSizeBytes / sourcePixels, 0.18, 2.2, 0.75);
-  const safeQuality = clamp(
-    exportSettings.quality,
-    MIN_EXPORT_QUALITY,
-    MAX_EXPORT_QUALITY,
-    DEFAULT_EXPORT_QUALITY,
-  );
-  const qualityMultiplier = 0.7 + (safeQuality - 0.9) * 3;
-
-  let bpp: number;
-  if (exportSettings.format === "png") {
-    bpp = clamp(sourceBpp * 1.35, 0.45, 1.65, 1.0);
-  } else if (exportSettings.format === "webp") {
-    bpp = clamp(sourceBpp * 0.42, 0.12, 0.45, 0.28) * qualityMultiplier;
-  } else {
-    bpp = clamp(sourceBpp * 0.55, 0.16, 0.55, 0.35) * qualityMultiplier;
-  }
-
-  const perTileBytes = Math.max(25 * 1024, Math.round(tilePixels * bpp));
-  const totalBytes = perTileBytes * Math.max(1, totalTiles);
-  return { perTileBytes, totalBytes };
 }
 
 function getUploadStepCopy(
@@ -373,6 +353,36 @@ export function ExportPanel({
   const formatLabel =
     exportSettings.format === "jpeg" ? "JPG" : exportSettings.format.toUpperCase();
   const estimatedSize = estimateOutputSizeBytes(sourceImage, geometry, totalTiles, exportSettings);
+  const optimizationHint = getExportOptimizationHint(exportSettings, estimatedSize.perTileBytes);
+  const optimizationHintConfig =
+    optimizationHint === "use-ig-preset"
+      ? {
+          description: (
+            <>
+              Ukuran besar karena memakai <strong>Ukuran Asli Foto</strong>. Untuk Instagram, lebar
+              maksimal foto tetap 1080 px.
+            </>
+          ),
+          buttonLabel: "Pakai Optimal IG (JPG · 1080 px)",
+          onApply: () =>
+            onChangeExportSettings({
+              ...exportSettings,
+              format: "jpeg",
+              resolutionMode: "ig-1080",
+            }),
+        }
+      : optimizationHint === "use-jpeg"
+        ? {
+            description: (
+              <>
+                Untuk foto kamera biasa, format <strong>JPG</strong> jauh lebih ringan dan cepat
+                di-upload ke Instagram.
+              </>
+            ),
+            buttonLabel: "Ganti ke JPG",
+            onApply: () => onChangeExportSettings({ ...exportSettings, format: "jpeg" }),
+          }
+        : null;
 
   return (
     <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-2xs">
@@ -383,6 +393,38 @@ export function ExportPanel({
         <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
           {totalTiles === 1 ? "1 foto · Kualitas Jernih" : `${totalTiles} kotak · Kualitas Jernih`}
         </span>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-zinc-700">Format Gambar</span>
+          {exportSettings.format === "webp" ? (
+            <span className="text-[11px] font-semibold text-indigo-700">
+              Sedang memakai WebP (Opsional)
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+          {QUICK_FORMAT_OPTIONS.map((option) => {
+            const active = exportSettings.format === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                disabled={isExporting}
+                onClick={() => onChangeExportSettings({ ...exportSettings, format: option.value })}
+                className={`rounded-xl border px-2.5 py-2 text-left transition disabled:opacity-50 ${
+                  active
+                    ? "border-indigo-600 bg-indigo-50/70 text-indigo-950 ring-1 ring-indigo-600/20"
+                    : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300"
+                }`}
+              >
+                <div className="text-[11px] font-bold">{option.label}</div>
+                <div className="mt-0.5 text-[10px] leading-tight text-zinc-500">{option.hint}</div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="rounded-xl border border-zinc-200/80 bg-zinc-50/70 px-3 py-2 text-[11px] text-zinc-600">
@@ -405,6 +447,20 @@ export function ExportPanel({
             </span>
           </span>
         )}
+
+        {optimizationHintConfig ? (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200/90 bg-amber-50/85 px-2.5 py-1.5 text-[11px] text-amber-950">
+            <span className="leading-snug">{optimizationHintConfig.description}</span>
+            <button
+              type="button"
+              disabled={isExporting}
+              onClick={optimizationHintConfig.onApply}
+              className="shrink-0 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-900 shadow-2xs transition hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-50"
+            >
+              {optimizationHintConfig.buttonLabel}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {isExporting && progress ? (
@@ -460,7 +516,7 @@ export function ExportPanel({
 
       <details className="group rounded-xl border border-zinc-200/80 bg-zinc-50/40 px-3 py-2">
         <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-medium text-zinc-700 hover:text-zinc-950">
-          <span>Pengaturan Format &amp; Ukuran (Opsional)</span>
+          <span>Pengaturan Ukuran &amp; WebP (Opsional)</span>
           <span className="text-[11px] text-zinc-400 transition group-open:rotate-180">▾</span>
         </summary>
 
@@ -473,38 +529,41 @@ export function ExportPanel({
               </strong>
             </div>
             <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">
-              Otomatis disesuaikan agar tetap tajam saat di-upload ke Instagram.
+              {exportSettings.resolutionMode === "ig-1080"
+                ? "Ukuran pas standar Instagram supaya langsung tajam."
+                : "Mengikuti piksel penuh dari foto asli (ukuran file lebih besar)."}
             </p>
           </div>
 
           <div>
-            <span className="text-xs font-medium text-zinc-700">Format File</span>
-            <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-              {FORMAT_OPTIONS.map((option) => {
-                const active = exportSettings.format === option.value;
-                const unsupportedWebp = option.value === "webp" && !capabilities.supportsWebpExport;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    disabled={isExporting}
-                    onClick={() =>
-                      onChangeExportSettings({ ...exportSettings, format: option.value })
-                    }
-                    className={`rounded-xl border px-2 py-2 text-left transition disabled:opacity-50 ${
-                      active
-                        ? "border-indigo-600 bg-indigo-50/70 text-indigo-950 ring-1 ring-indigo-600/20"
-                        : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300"
-                    }`}
-                  >
-                    <div className="text-[11px] font-bold">{option.label}</div>
-                    <div className="mt-0.5 text-[10px] leading-tight text-zinc-500">
-                      {unsupportedWebp ? "Otomatis ke PNG di browser ini" : option.hint}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            <span className="text-xs font-medium text-zinc-700">Format Alternatif (WebP)</span>
+            <button
+              type="button"
+              disabled={isExporting}
+              onClick={() =>
+                onChangeExportSettings({
+                  ...exportSettings,
+                  format: exportSettings.format === "webp" ? "png" : "webp",
+                })
+              }
+              className={`mt-1.5 w-full rounded-xl border px-2.5 py-2 text-left transition disabled:opacity-50 ${
+                exportSettings.format === "webp"
+                  ? "border-indigo-600 bg-indigo-50/70 text-indigo-950 ring-1 ring-indigo-600/20"
+                  : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold">WebP · Ringan &amp; Tajam</span>
+                <span className="text-[10px] font-semibold text-indigo-700">
+                  {exportSettings.format === "webp" ? "Aktif ✓ (Klik untuk batal)" : "Pakai WebP"}
+                </span>
+              </div>
+              <div className="mt-0.5 text-[10px] leading-tight text-zinc-500">
+                {!capabilities.supportsWebpExport
+                  ? "Otomatis ke PNG jernih di browser ini"
+                  : "Alternatif modern berukuran ringan (didukung browser & perangkat terbaru)"}
+              </div>
+            </button>
           </div>
 
           {exportSettings.format !== "png" ? (
