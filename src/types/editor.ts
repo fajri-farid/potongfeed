@@ -169,3 +169,84 @@ export interface UploadChecklistState {
   uploadedOrders: number[];
   updatedAt: string;
 }
+
+/** Kemampuan API pemrosesan gambar di browser pengguna saat ini. */
+export interface BrowserImageCapabilities {
+  supportsCreateImageBitmap: boolean;
+  supportsOffscreenCanvas: boolean;
+  supportsWebWorker: boolean;
+  supportsWebpExport: boolean;
+  supportsCanvasFilter: boolean;
+}
+
+/** Informasi gambar lokal yang baru saja dimuat untuk preview UI. */
+export interface LoadedLocalImage {
+  name: string;
+  file: File;
+  naturalWidth: number;
+  naturalHeight: number;
+  mimeType: string;
+  fileSizeBytes: number;
+  proxyUrl: string;
+}
+
+/** Jalur eksekusi pemotong gambar yang dipakai pada proses ekspor. */
+export type ExportExecutionMode = "worker" | "main-thread";
+
+/** Laporan progres pemotongan tile demi tile untuk indikator UI. */
+export interface ExportProgress {
+  completed: number;
+  total: number;
+  currentFilename: string;
+  phase: "decoding" | "slicing" | "packaging";
+}
+
+/** Hasil akhir pipeline ekspor grid beserta metadata eksekusi aktual. */
+export interface ExportPipelineResult {
+  tiles: TileSliceResult[];
+  executionMode: ExportExecutionMode;
+  actualFormat: ExportFormat;
+  usedFallbackFormat: boolean;
+}
+
+/** Kode error terstruktur dari Web Worker pemotong tile. */
+export type WorkerErrorCode =
+  "OFFSCREEN_UNSUPPORTED" | "DECODE_FAILED" | "ENCODE_FAILED" | "CANCELLED";
+
+/** Pesan perintah yang dikirim UI/orchestrator ke Web Worker pemotong grid. */
+export type SplitterWorkerRequest =
+  | {
+      type: "split";
+      jobId: string;
+      file: File;
+      splitPlan: GridSplitPlan;
+      transform: CompositionTransform;
+      exportSettings: ExportSettings;
+    }
+  | {
+      type: "cancel";
+      jobId: string;
+    };
+
+/** Pesan balik dari Web Worker pemotong grid menuju thread utama. */
+export type SplitterWorkerResponse =
+  | {
+      type: "progress";
+      jobId: string;
+      completed: number;
+      total: number;
+      currentFilename: string;
+    }
+  | {
+      type: "complete";
+      jobId: string;
+      tiles: TileSliceResult[];
+      actualFormat: ExportFormat;
+      usedFallbackFormat: boolean;
+    }
+  | {
+      type: "error";
+      jobId: string;
+      code: WorkerErrorCode;
+      message: string;
+    };
