@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { APP_NAME, APP_TAGLINE, APP_VERSION } from "@/lib/constants";
 
 const HIGHLIGHTS = [
@@ -56,6 +57,19 @@ export default function Home() {
             Potong foto grid Instagram dengan presisi, langsung di browser Anda.
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-zinc-600 sm:text-base">{APP_TAGLINE}</p>
+
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <Link
+              href="/editor"
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+            >
+              Buka Editor PotongFeed
+              <span aria-hidden="true">→</span>
+            </Link>
+            <span className="text-xs text-zinc-500">
+              Pratinjau landing page penuh sedang disiapkan
+            </span>
+          </div>
         </section>
 
         <section

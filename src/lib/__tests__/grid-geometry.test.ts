@@ -44,6 +44,7 @@ describe("grid-geometry", () => {
     );
     expect(g45.tileWidth).toBe(1080);
     expect(g45.tileHeight).toBe(1350);
+    expect(g45.masterWidth).toBe(3105);
 
     const g11 = calculateTargetTileDimensions(
       3240,
@@ -54,13 +55,15 @@ describe("grid-geometry", () => {
     );
     expect(g11.tileWidth).toBe(1080);
     expect(g11.tileHeight).toBe(1080);
+    expect(g11.masterWidth).toBe(2700);
   });
 
   it("menghitung dimensi native tanpa downscale merusak dan menandai sumber kecil di ig-1080", () => {
+    const grid34 = { aspectPreset: "3:4" as const, columns: 3 as const, rows: 3 };
     const highResNative = calculateTargetTileDimensions(
       4500,
       6000,
-      DEFAULT_GRID_CONFIG,
+      grid34,
       DEFAULT_COMPOSITION_TRANSFORM,
       "native",
     );
@@ -72,7 +75,7 @@ describe("grid-geometry", () => {
     const smallNative = calculateTargetTileDimensions(
       1500,
       2000,
-      DEFAULT_GRID_CONFIG,
+      grid34,
       DEFAULT_COMPOSITION_TRANSFORM,
       "native",
     );
@@ -88,12 +91,13 @@ describe("grid-geometry", () => {
       "ig-1080",
     );
     expect(smallOnIg1080.tileWidth).toBe(1080);
+    expect(smallOnIg1080.tileHeight).toBe(1350);
     expect(smallOnIg1080.wasUpscaledFromSmallSource).toBe(true);
 
     const zoomedInOn3240 = calculateTargetTileDimensions(
       3240,
       4320,
-      DEFAULT_GRID_CONFIG,
+      grid34,
       { ...DEFAULT_COMPOSITION_TRANSFORM, zoom: 2.0 },
       "ig-1080",
     );
@@ -222,11 +226,12 @@ describe("grid-geometry", () => {
   });
 
   it("menghitung geseran pan 1:1 terhadap piksel preview via applyPanPixelDelta", () => {
+    const grid34 = { aspectPreset: "3:4" as const, columns: 3 as const, rows: 3 };
     const zoomed = { ...DEFAULT_COMPOSITION_TRANSFORM, fitMode: "fill" as const, zoom: 2.0 };
     const moved = applyPanPixelDelta(
       zoomed,
       { width: 3240, height: 4320 },
-      DEFAULT_GRID_CONFIG,
+      grid34,
       { x: 180, y: -90 },
       { width: 360, height: 480 },
     );
@@ -238,7 +243,7 @@ describe("grid-geometry", () => {
     const zeroPreview = applyPanPixelDelta(
       zoomed,
       { width: 3240, height: 4320 },
-      DEFAULT_GRID_CONFIG,
+      grid34,
       { x: 50, y: 50 },
       { width: 0, height: 0 },
     );
@@ -272,6 +277,51 @@ describe("grid-geometry", () => {
         6,
       );
     }
+
+    // Verifikasi mode 4:5 (3x1) memiliki overlap kompensasi 3.125% per sisi sehingga di profil 3:4 nyambung 100%
+    const plan45Profile = computeTileCropPlans({
+      sourceWidth: 3105,
+      sourceHeight: 1350,
+      gridConfig: { aspectPreset: "4:5", columns: 3, rows: 1 },
+      transform: DEFAULT_COMPOSITION_TRANSFORM,
+      exportSettings: DEFAULT_EXPORT_SETTINGS,
+    });
+    const col1 = plan45Profile.tiles.find((t) => t.col === 1)!;
+    const col2 = plan45Profile.tiles.find((t) => t.col === 2)!;
+    const col3 = plan45Profile.tiles.find((t) => t.col === 3)!;
+    const trimPx = col1.masterTileRect.width * plan45Profile.safeArea.ratioCropTrimFraction.left;
+    expect(col1.masterTileRect.x + col1.masterTileRect.width - trimPx).toBeCloseTo(
+      col2.masterTileRect.x + trimPx,
+      6,
+    );
+    expect(col2.masterTileRect.x + col2.masterTileRect.width - trimPx).toBeCloseTo(
+      col3.masterTileRect.x + trimPx,
+      6,
+    );
+
+    // Mendukung 1x1 (1 foto tunggal) dan 2x1 (2 kotak sebelahan)
+    const plan1x1 = computeTileCropPlans({
+      sourceWidth: 1080,
+      sourceHeight: 1350,
+      gridConfig: { aspectPreset: "4:5", columns: 1, rows: 1 },
+      transform: DEFAULT_COMPOSITION_TRANSFORM,
+      exportSettings: DEFAULT_EXPORT_SETTINGS,
+    });
+    expect(plan1x1.tiles).toHaveLength(1);
+    expect(plan1x1.geometry.columns).toBe(1);
+    expect(plan1x1.geometry.masterWidth).toBe(1080);
+    expect(plan1x1.geometry.masterHeight).toBe(1350);
+
+    const plan2x1 = computeTileCropPlans({
+      sourceWidth: 2160,
+      sourceHeight: 1350,
+      gridConfig: { aspectPreset: "4:5", columns: 2, rows: 1 },
+      transform: DEFAULT_COMPOSITION_TRANSFORM,
+      exportSettings: DEFAULT_EXPORT_SETTINGS,
+    });
+    expect(plan2x1.tiles).toHaveLength(2);
+    expect(plan2x1.geometry.columns).toBe(2);
+    expect(plan2x1.geometry.masterWidth).toBe(2093);
   });
 
   it("menghitung urutan posting Instagram (kanan-bawah ke kiri-atas) dan penamaan file", () => {

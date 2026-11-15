@@ -17,6 +17,8 @@ import type {
 } from "@/types/editor";
 
 export const GRID_COLUMNS = 3 as const;
+export const MIN_GRID_COLUMNS = 1;
+export const MAX_GRID_COLUMNS = 3;
 export const MIN_GRID_ROWS = 1;
 export const MAX_GRID_ROWS = 6;
 export const IG_STANDARD_TILE_WIDTH = 1080;
@@ -37,9 +39,9 @@ export const MAX_SAFE_TILE_PIXELS = 16_000_000;
 export const MAX_SAFE_TILE_DIMENSION = 8_192;
 
 export const DEFAULT_GRID_CONFIG: GridLayoutConfig = {
-  aspectPreset: "3:4",
+  aspectPreset: "4:5",
   columns: GRID_COLUMNS,
-  rows: 3,
+  rows: 1,
 };
 
 export const DEFAULT_COMPOSITION_TRANSFORM: CompositionTransform = {
@@ -89,7 +91,7 @@ const SAFE_AREA_BANDS_MAP: Record<AspectPreset, SafeAreaBands> = {
     },
     contentSafeMarginFraction: CONTENT_SAFE_MARGIN_FRACTION,
     trimDescription:
-      "Pas edge-to-edge di grid profil 3:4; area tepi atas dan bawah 3,125% terpotong saat pratinjau feed 4:5.",
+      "Pas memenuhi kotak profil Instagram terbaru, namun sedikit tepi atas-bawah terpotong saat dilihat di beranda (feed).",
   },
   "4:5": {
     aspectPreset: "4:5",
@@ -102,7 +104,7 @@ const SAFE_AREA_BANDS_MAP: Record<AspectPreset, SafeAreaBands> = {
     },
     contentSafeMarginFraction: CONTENT_SAFE_MARGIN_FRACTION,
     trimDescription:
-      "Kompatibel untuk feed 4:5; pita kiri dan kanan 3,125% per sisi akan terpotong di tampilan grid profil 3:4.",
+      "Otomatis disambungkan agar nyambung rapi di profil IG (3:4). Area merah tipis di ujung kiri-kanan hanya terlihat saat postingan dibuka satu-satu.",
   },
   "1:1": {
     aspectPreset: "1:1",
@@ -115,7 +117,7 @@ const SAFE_AREA_BANDS_MAP: Record<AspectPreset, SafeAreaBands> = {
     },
     contentSafeMarginFraction: CONTENT_SAFE_MARGIN_FRACTION,
     trimDescription:
-      "Rasio persegi klasik 1:1; pita kiri dan kanan 12,5% per sisi akan terpotong di grid profil 3:4.",
+      "Otomatis disambungkan agar tetap nyambung di profil IG (3:4). Area merah di ujung kiri-kanan hanya terlihat saat postingan dibuka.",
   },
 };
 
@@ -164,15 +166,20 @@ export function getMinZoomForMode(fitMode: FitMode): number {
   return fitMode === "fit" ? MIN_ZOOM_FIT : MIN_ZOOM_FILL;
 }
 
-/** Menormalkan jumlah baris (`1..6`) dan mengunci jumlah kolom grid ke `3`. */
+/** Menormalkan jumlah kolom (`1..3`) dan jumlah baris (`1..6`). */
 export function normalizeGridLayoutConfig(config: GridLayoutConfig): GridLayoutConfig {
+  const safeColumns = Number.isFinite(config.columns)
+    ? Math.round(
+        clamp(config.columns, MIN_GRID_COLUMNS, MAX_GRID_COLUMNS, DEFAULT_GRID_CONFIG.columns),
+      )
+    : DEFAULT_GRID_CONFIG.columns;
   const safeRows = Number.isFinite(config.rows)
     ? Math.round(clamp(config.rows, MIN_GRID_ROWS, MAX_GRID_ROWS, DEFAULT_GRID_CONFIG.rows))
     : DEFAULT_GRID_CONFIG.rows;
 
   return {
     aspectPreset: config.aspectPreset,
-    columns: GRID_COLUMNS,
+    columns: safeColumns,
     rows: safeRows,
   };
 }
@@ -264,8 +271,23 @@ function clampTileDimensionsToSafetyLimit(
 }
 
 /**
+ * Menghitung fraksi lebar tile yang tampil di dalam kotak profil 3:4 Instagram.
+ * Untuk 4:5 (0.80) -> 0.75 / 0.80 = 0.9375 (overlap 6.25% antar kolom agar 100% nyambung di profil 3:4).
+ * Untuk 1:1 (1.00) -> 0.75 / 1.00 = 0.75 (overlap 25% antar kolom agar 100% nyambung di profil 3:4).
+ * Untuk 3:4 (0.75) -> 1.0 (tanpa overlap horizontal).
+ */
+export function getHorizontalProfileVisibleFraction(aspectPreset: AspectPreset): number {
+  const tileAspect = ASPECT_SPEC_MAP[aspectPreset].aspectRatio;
+  if (tileAspect > IG_PROFILE_SAFE_RATIO) {
+    return IG_PROFILE_SAFE_RATIO / tileAspect;
+  }
+  return 1;
+}
+
+/**
  * Menghitung dimensi piksel target tiap tile dan kanvas master untuk mode `ig-1080`
- * maupun `native` tanpa downscale merusak, sekaligus menerapkan batas pengaman kanvas browser.
+ * maupun `native` tanpa downscale merusak, sekaligus kompensasi overlap horizontal
+ * agar potongan 4:5 dan 1:1 tersambung 100% presisi saat dipajang di grid profil 3:4 Instagram.
  */
 export function calculateTargetTileDimensions(
   sourceWidth: number,
@@ -279,7 +301,9 @@ export function calculateTargetTileDimensions(
   const safeGrid = normalizeGridLayoutConfig(gridConfig);
   const safeTransform = normalizeCompositionTransform(transform);
   const spec = ASPECT_SPEC_MAP[safeGrid.aspectPreset];
-  const virtualMasterW = safeGrid.columns;
+  const visibleWidthFraction = getHorizontalProfileVisibleFraction(safeGrid.aspectPreset);
+  const effectiveColumnsSpan = (safeGrid.columns - 1) * visibleWidthFraction + 1;
+  const virtualMasterW = effectiveColumnsSpan;
   const virtualMasterH = safeGrid.rows / spec.aspectRatio;
 
   const baseScale = computeBaseScale(
@@ -291,7 +315,10 @@ export function calculateTargetTileDimensions(
   );
   const virtualScale = baseScale * safeTransform.zoom;
   const effectiveSourceMasterWidth = virtualMasterW / virtualScale;
-  const rawNativeTileWidth = Math.max(1, Math.round(effectiveSourceMasterWidth / safeGrid.columns));
+  const rawNativeTileWidth = Math.max(
+    1,
+    Math.round(effectiveSourceMasterWidth / effectiveColumnsSpan),
+  );
 
   if (resolutionMode === "ig-1080") {
     const tileWidth = IG_STANDARD_TILE_WIDTH;
@@ -299,11 +326,11 @@ export function calculateTargetTileDimensions(
     return {
       aspectPreset: safeGrid.aspectPreset,
       tileAspectRatio: spec.aspectRatio,
-      columns: GRID_COLUMNS,
+      columns: safeGrid.columns,
       rows: safeGrid.rows,
       tileWidth,
       tileHeight,
-      masterWidth: tileWidth * safeGrid.columns,
+      masterWidth: Math.round(tileWidth * effectiveColumnsSpan),
       masterHeight: tileHeight * safeGrid.rows,
       wasUpscaledFromSmallSource: rawNativeTileWidth < IG_STANDARD_TILE_WIDTH,
       wasClampedBySafetyLimit: false,
@@ -320,11 +347,11 @@ export function calculateTargetTileDimensions(
   return {
     aspectPreset: safeGrid.aspectPreset,
     tileAspectRatio: spec.aspectRatio,
-    columns: GRID_COLUMNS,
+    columns: safeGrid.columns,
     rows: safeGrid.rows,
     tileWidth: clampedTile.width,
     tileHeight: clampedTile.height,
-    masterWidth: clampedTile.width * safeGrid.columns,
+    masterWidth: Math.round(clampedTile.width * effectiveColumnsSpan),
     masterHeight: clampedTile.height * safeGrid.rows,
     wasUpscaledFromSmallSource: false,
     wasClampedBySafetyLimit: clampedTile.wasClamped,
@@ -433,10 +460,12 @@ export function applyPanPixelDelta(
 
   const safeGrid = normalizeGridLayoutConfig(gridConfig);
   const ratio = getTileAspectRatio(safeGrid.aspectPreset);
+  const visibleWidthFraction = getHorizontalProfileVisibleFraction(safeGrid.aspectPreset);
+  const effectiveColumnsSpan = (safeGrid.columns - 1) * visibleWidthFraction + 1;
   const placement = computeCompositionRects(
     sourceSize.width,
     sourceSize.height,
-    safeGrid.columns,
+    effectiveColumnsSpan,
     safeGrid.rows / ratio,
     safeTransform,
   );
@@ -575,6 +604,10 @@ export function computeTileCropPlans(params: {
 
   const safeArea = getSafeAreaBands(safeGrid.aspectPreset);
   const totalTiles = safeGrid.rows * safeGrid.columns;
+  const colStrideX =
+    safeGrid.columns > 1
+      ? (geometry.masterWidth - geometry.tileWidth) / (safeGrid.columns - 1)
+      : geometry.tileWidth;
   const tiles: TileSlicePlan[] = [];
 
   for (let row = 1; row <= safeGrid.rows; row += 1) {
@@ -582,18 +615,21 @@ export function computeTileCropPlans(params: {
       const uploadOrder = computeUploadOrder(row, col, safeGrid.rows, safeGrid.columns);
       const filename = formatTileFilename(uploadOrder, row, col, safeExport.format);
 
+      const tileX = (col - 1) * colStrideX;
+      const tileY = (row - 1) * geometry.tileHeight;
+
       const masterTileRect: Rect = {
-        x: (col - 1) * geometry.tileWidth,
-        y: (row - 1) * geometry.tileHeight,
+        x: tileX,
+        y: tileY,
         width: geometry.tileWidth,
         height: geometry.tileHeight,
       };
 
       const normalizedTileRect: Rect = {
-        x: (col - 1) / safeGrid.columns,
-        y: (row - 1) / safeGrid.rows,
-        width: 1 / safeGrid.columns,
-        height: 1 / safeGrid.rows,
+        x: tileX / geometry.masterWidth,
+        y: tileY / geometry.masterHeight,
+        width: geometry.tileWidth / geometry.masterWidth,
+        height: geometry.tileHeight / geometry.masterHeight,
       };
 
       const { sourceCropRect, tileDestRect } = computeTileIntersection(

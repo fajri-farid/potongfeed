@@ -111,7 +111,7 @@ describe("tile-renderer", () => {
     const splitPlan = computeTileCropPlans({
       sourceWidth: 3240,
       sourceHeight: 4320,
-      gridConfig: DEFAULT_GRID_CONFIG,
+      gridConfig: { ...DEFAULT_GRID_CONFIG, rows: 3 },
       transform: DEFAULT_COMPOSITION_TRANSFORM,
       exportSettings: DEFAULT_EXPORT_SETTINGS,
     });
@@ -137,16 +137,16 @@ describe("tile-renderer", () => {
     expect(output.tiles[8].filename).toBe("09_potongfeed_b1-k1.png");
     expect(progressEvents).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
 
-    // Memastikan tidak pernah mengalokasikan 1 kanvas raksasa 3240x4320
+    // Memastikan tidak pernah mengalokasikan 1 kanvas raksasa 3240x4050 (default 4:5 = 1080x1350/tile)
     expect(allocated).toHaveLength(9);
     for (const record of allocated) {
       expect(record.initialWidth).toBe(1080);
-      expect(record.initialHeight).toBe(1440);
+      expect(record.initialHeight).toBe(1350);
       expect(record.canvas.width).toBe(0);
       expect(record.canvas.height).toBe(0);
       expect(record.smoothingFlags).toEqual([true]);
       expect(record.smoothingQualities).toEqual(["high"]);
-      expect(record.drawCalls[0]).toEqual(expect.arrayContaining([1080, 1440, 0, 0, 1080, 1440]));
+      expect(record.drawCalls[0]).toEqual(expect.arrayContaining([0, 0, 1080, 1350]));
     }
   });
 
@@ -159,7 +159,7 @@ describe("tile-renderer", () => {
     const splitPlan = computeTileCropPlans({
       sourceWidth: 6000,
       sourceHeight: 2000,
-      gridConfig: DEFAULT_GRID_CONFIG,
+      gridConfig: { ...DEFAULT_GRID_CONFIG, rows: 3 },
       transform: blurTransform,
       exportSettings: DEFAULT_EXPORT_SETTINGS,
     });
@@ -176,10 +176,10 @@ describe("tile-renderer", () => {
     });
 
     expect(output.tiles).toHaveLength(9);
-    // Kanvas pertama adalah backdrop ringan (540x720), sisanya 9 tile 1080x1440
+    // Kanvas pertama adalah backdrop ringan (540x675 untuk default 4:5), sisanya 9 tile 1080x1350
     expect(allocated).toHaveLength(10);
     expect(allocated[0].initialWidth).toBe(540);
-    expect(allocated[0].initialHeight).toBe(720);
+    expect(allocated[0].initialHeight).toBe(675);
     expect(allocated[0].canvas.width).toBe(0);
     expect(allocated[0].canvas.height).toBe(0);
     // Baris bawah (uploadOrder #1) hanya berisi latar blur; baris tengah (#4) berisi blur + foto utama

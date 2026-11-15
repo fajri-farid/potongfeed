@@ -25,7 +25,10 @@ function createMemoryStorage() {
 }
 
 describe("local-storage", () => {
-  it("mengembalikan preferensi default saat storage null atau kosong", () => {
+  it("mengembalikan preferensi default (4:5, 3x1) saat storage null atau kosong", () => {
+    expect(getDefaultPreferences().aspectPreset).toBe("4:5");
+    expect(getDefaultPreferences().columns).toBe(3);
+    expect(getDefaultPreferences().rows).toBe(1);
     expect(loadPreferences(null)).toEqual(getDefaultPreferences());
     const memory = createMemoryStorage();
     expect(loadPreferences(memory)).toEqual(getDefaultPreferences());
@@ -35,7 +38,7 @@ describe("local-storage", () => {
     const memory = createMemoryStorage();
     const custom = {
       ...getDefaultPreferences(),
-      aspectPreset: "4:5" as const,
+      aspectPreset: "3:4" as const,
       rows: 4,
       fitMode: "fit" as const,
       backgroundType: "custom" as const,
@@ -60,7 +63,7 @@ describe("local-storage", () => {
     );
 
     const sanitized = loadPreferences(memory);
-    expect(sanitized.aspectPreset).toBe("3:4");
+    expect(sanitized.aspectPreset).toBe("4:5");
     expect(sanitized.rows).toBe(6);
     expect(sanitized.quality).toBe(0.95);
     expect(sanitized.backgroundHex).toBe("#FFFFFF");

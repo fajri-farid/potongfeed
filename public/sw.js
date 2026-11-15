@@ -49,6 +49,16 @@ self.addEventListener("fetch", (event) => {
         .catch(async () => {
           const cachedExact = await caches.match(request);
           if (cachedExact) return cachedExact;
+
+          const pathname = requestUrl.pathname;
+          if (pathname !== "/" && !pathname.endsWith(".html")) {
+            const cleanPath = pathname.replace(/\/+$/, "");
+            const cachedHtml = await caches.match(`${cleanPath}.html`);
+            if (cachedHtml) return cachedHtml;
+            const cachedNested = await caches.match(`${cleanPath}/index.html`);
+            if (cachedNested) return cachedNested;
+          }
+
           const cachedIndex = await caches.match("/index.html");
           if (cachedIndex) return cachedIndex;
           return (await caches.match("/")) || Response.error();

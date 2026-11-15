@@ -43,10 +43,10 @@ export interface SourceImageMeta {
   proxyUrl: string;
 }
 
-/** Konfigurasi tata letak grid profil Instagram (kolom baku = 3). */
+/** Konfigurasi tata letak grid profil Instagram (kolom 1..3, baris 1..6). */
 export interface GridLayoutConfig {
   aspectPreset: AspectPreset;
-  columns: 3;
+  columns: number;
   rows: number;
 }
 
@@ -81,7 +81,7 @@ export interface ExportSettings {
 export interface MasterCanvasGeometry {
   aspectPreset: AspectPreset;
   tileAspectRatio: number;
-  columns: 3;
+  columns: number;
   rows: number;
   tileWidth: number;
   tileHeight: number;
@@ -152,6 +152,7 @@ export interface TileSliceResult {
 /** Preferensi ringan editor yang disimpan di `localStorage`. */
 export interface PersistedPreferences {
   aspectPreset: AspectPreset;
+  columns?: number;
   rows: number;
   fitMode: FitMode;
   backgroundType: FitBackgroundType;

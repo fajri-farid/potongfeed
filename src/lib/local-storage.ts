@@ -4,8 +4,10 @@ import {
   DEFAULT_GRID_CONFIG,
   DEFAULT_SAFE_AREA_OPTIONS,
   MAX_EXPORT_QUALITY,
+  MAX_GRID_COLUMNS,
   MAX_GRID_ROWS,
   MIN_EXPORT_QUALITY,
+  MIN_GRID_COLUMNS,
   MIN_GRID_ROWS,
   clamp,
   normalizeHexColor,
@@ -21,7 +23,7 @@ import type {
   UploadChecklistState,
 } from "@/types/editor";
 
-export const STORAGE_KEY_PREFERENCES = "potongfeed:v1:preferences";
+export const STORAGE_KEY_PREFERENCES = "potongfeed:v4:preferences";
 export const STORAGE_KEY_UPLOAD_CHECKLIST = "potongfeed:v1:upload-checklist";
 
 export type StorageReader = Pick<Storage, "getItem">;
@@ -65,6 +67,7 @@ function readBoolean(value: unknown, fallback: boolean): boolean {
 export function getDefaultPreferences(): PersistedPreferences {
   return {
     aspectPreset: DEFAULT_GRID_CONFIG.aspectPreset,
+    columns: DEFAULT_GRID_CONFIG.columns,
     rows: DEFAULT_GRID_CONFIG.rows,
     fitMode: DEFAULT_COMPOSITION_TRANSFORM.fitMode,
     backgroundType: DEFAULT_COMPOSITION_TRANSFORM.backgroundType,
@@ -83,15 +86,18 @@ export function buildImageChecklistSignature(input: {
   naturalHeight: number;
   fileSizeBytes: number;
   aspectPreset: AspectPreset;
+  columns?: number;
   rows: number;
 }): string {
   const safeName = input.name.trim() || "foto";
+  const cols = input.columns ?? DEFAULT_GRID_CONFIG.columns;
+  const gridTag = cols === 3 ? `r${input.rows}` : `c${cols}r${input.rows}`;
   return [
     safeName,
     `${input.naturalWidth}x${input.naturalHeight}`,
     String(input.fileSizeBytes),
     input.aspectPreset,
-    `r${input.rows}`,
+    gridTag,
   ].join("|");
 }
 
@@ -116,6 +122,17 @@ export function loadPreferences(
     }
 
     const safeAreaRaw = isPlainRecord(parsed.safeArea) ? parsed.safeArea : {};
+    const parsedColumns =
+      typeof parsed.columns === "number" && Number.isFinite(parsed.columns)
+        ? Math.round(
+            clamp(
+              parsed.columns,
+              MIN_GRID_COLUMNS,
+              MAX_GRID_COLUMNS,
+              defaults.columns ?? DEFAULT_GRID_CONFIG.columns,
+            ),
+          )
+        : (defaults.columns ?? DEFAULT_GRID_CONFIG.columns);
     const parsedRows =
       typeof parsed.rows === "number" && Number.isFinite(parsed.rows)
         ? Math.round(clamp(parsed.rows, MIN_GRID_ROWS, MAX_GRID_ROWS, defaults.rows))
@@ -127,6 +144,7 @@ export function loadPreferences(
 
     return {
       aspectPreset: readEnum(parsed.aspectPreset, ASPECT_PRESETS, defaults.aspectPreset),
+      columns: parsedColumns,
       rows: parsedRows,
       fitMode: readEnum(parsed.fitMode, FIT_MODES, defaults.fitMode),
       backgroundType: readEnum(parsed.backgroundType, BACKGROUND_TYPES, defaults.backgroundType),

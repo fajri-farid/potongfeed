@@ -31,3 +31,9 @@ body {
     -apple-system,
     sans-serif;
 }
+
+.studio-dot-grid {
+  background-color: #f4f4f5;
+  background-image: radial-gradient(#d4d4d8 1px, transparent 1px);
+  background-size: 20px 20px;
+}

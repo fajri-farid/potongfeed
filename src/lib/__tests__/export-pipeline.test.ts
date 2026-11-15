@@ -37,7 +37,7 @@ function createTestMainCanvasFactory() {
 describe("export-pipeline", () => {
   it("membuat nama berkas ZIP yang bersih dan aman", () => {
     expect(buildZipFilename("Liburan Bali (Final)!.JPG", DEFAULT_GRID_CONFIG)).toBe(
-      "potongfeed_liburan-bali-final_3x3.zip",
+      "potongfeed_liburan-bali-final_3x1.zip",
     );
     expect(buildZipFilename("???.png", { aspectPreset: "3:4", columns: 3, rows: 4 })).toBe(
       "potongfeed_gambar_3x4.zip",

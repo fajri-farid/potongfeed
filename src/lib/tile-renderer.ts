@@ -235,14 +235,18 @@ function drawSingleTileToCanvas(params: {
   ctx.imageSmoothingQuality = "high";
 
   if (transform.fitMode === "fit" && transform.backgroundType === "blur" && blurredBackdrop) {
-    const sx = (tilePlan.col - 1) * blurredBackdrop.tileUnitWidth;
-    const sy = (tilePlan.row - 1) * blurredBackdrop.tileUnitHeight;
+    const masterBackdropW = blurredBackdrop.canvas.width || blurredBackdrop.tileUnitWidth * 3;
+    const masterBackdropH = blurredBackdrop.canvas.height || blurredBackdrop.tileUnitHeight * 3;
+    const sx = tilePlan.normalizedTileRect.x * masterBackdropW;
+    const sy = tilePlan.normalizedTileRect.y * masterBackdropH;
+    const sw = tilePlan.normalizedTileRect.width * masterBackdropW;
+    const sh = tilePlan.normalizedTileRect.height * masterBackdropH;
     ctx.drawImage(
       blurredBackdrop.canvas as unknown as CanvasImageSource,
       sx,
       sy,
-      blurredBackdrop.tileUnitWidth,
-      blurredBackdrop.tileUnitHeight,
+      sw,
+      sh,
       0,
       0,
       canvas.width,
