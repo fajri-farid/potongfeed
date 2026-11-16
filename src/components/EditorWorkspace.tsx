@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { AppHeader } from "@/components/AppHeader";
 import { DropzoneUpload } from "@/components/DropzoneUpload";
 import { EditorCanvas } from "@/components/EditorCanvas";
 import { ExportPanel } from "@/components/ExportPanel";
@@ -9,7 +10,7 @@ import { GridControls } from "@/components/GridControls";
 import { InstagramProfilePreview } from "@/components/InstagramProfilePreview";
 import { PwaInstallButton } from "@/components/PwaInstallButton";
 import { SafeAreaControls } from "@/components/SafeAreaControls";
-import { APP_NAME, APP_VERSION } from "@/lib/constants";
+import { APP_VERSION, PRODUCT_FLOW_STEPS } from "@/lib/constants";
 import {
   DEFAULT_COMPOSITION_TRANSFORM,
   GRID_COLUMNS,
@@ -179,109 +180,80 @@ function EditorWorkspaceContent() {
   }, [sourceImage, gridConfig, transform, exportSettings]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 text-zinc-900">
-      <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="flex items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-            >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 32 32"
-                className="h-7 w-7 rounded-lg border border-zinc-200 bg-zinc-50 p-1"
-                fill="none"
-              >
-                <rect x="4" y="3" width="6.5" height="7.5" rx="1.2" fill="#18181b" />
-                <rect x="12.75" y="3" width="6.5" height="7.5" rx="1.2" fill="#18181b" />
-                <rect x="21.5" y="3" width="6.5" height="7.5" rx="1.2" fill="#18181b" />
-                <rect x="4" y="12.25" width="6.5" height="7.5" rx="1.2" fill="#18181b" />
-                <rect x="12.75" y="12.25" width="6.5" height="7.5" rx="1.2" fill="#18181b" />
-                <rect x="21.5" y="12.25" width="6.5" height="7.5" rx="1.2" fill="#18181b" />
-                <rect x="4" y="21.5" width="6.5" height="7.5" rx="1.2" fill="#18181b" />
-                <rect x="12.75" y="21.5" width="6.5" height="7.5" rx="1.2" fill="#18181b" />
-                <rect x="21.5" y="21.5" width="6.5" height="7.5" rx="1.2" fill="#4f46e5" />
-              </svg>
-              <span className="text-sm font-bold tracking-tight text-zinc-950">{APP_NAME}</span>
-            </Link>
+    <div className="studio-dot-grid flex min-h-screen flex-col text-zinc-900">
+      <AppHeader
+        context={
+          <>
             <span className="hidden rounded-full bg-zinc-100 px-2 py-0.5 font-mono text-[10px] text-zinc-500 sm:inline-block">
               v{APP_VERSION}
             </span>
-            <span className="hidden rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-600/15 md:inline-flex">
-              Aman &amp; Privat • Foto Tidak Pernah Diunggah ke Server
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <PwaInstallButton />
-            <Link
-              href="/"
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950"
-            >
-              Beranda
-            </Link>
-          </div>
-        </div>
-
-        {sourceImage ? (
-          <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-1.5 lg:hidden">
-            <div className="grid grid-cols-3 gap-1 rounded-xl bg-zinc-200/70 p-1 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setMobileTab("canvas")}
-                className={`rounded-lg py-1.5 transition ${
-                  mobileTab === "canvas" ? "bg-white text-zinc-950 shadow-2xs" : "text-zinc-600"
-                }`}
-              >
-                1 · Kanvas
-              </button>
-              <button
-                type="button"
-                onClick={() => setMobileTab("controls")}
-                className={`rounded-lg py-1.5 transition ${
-                  mobileTab === "controls" ? "bg-white text-zinc-950 shadow-2xs" : "text-zinc-600"
-                }`}
-              >
-                2 · Ukuran Grid
-              </button>
-              <button
-                type="button"
-                onClick={() => setMobileTab("preview")}
-                className={`rounded-lg py-1.5 transition ${
-                  mobileTab === "preview" ? "bg-white text-zinc-950 shadow-2xs" : "text-zinc-600"
-                }`}
-              >
-                3 · Cek &amp; Unduh
-              </button>
+            <span className="app-header-note hidden lg:inline">Fotomu tetap di perangkatmu.</span>
+          </>
+        }
+        subnav={
+          sourceImage ? (
+            <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-1.5 lg:hidden">
+              <div className="grid grid-cols-3 gap-1 rounded-xl bg-zinc-200/70 p-1 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("canvas")}
+                  className={`rounded-lg py-1.5 transition ${
+                    mobileTab === "canvas" ? "bg-white text-zinc-950 shadow-2xs" : "text-zinc-600"
+                  }`}
+                >
+                  1 · Kanvas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("controls")}
+                  className={`rounded-lg py-1.5 transition ${
+                    mobileTab === "controls" ? "bg-white text-zinc-950 shadow-2xs" : "text-zinc-600"
+                  }`}
+                >
+                  2 · Ukuran Grid
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("preview")}
+                  className={`rounded-lg py-1.5 transition ${
+                    mobileTab === "preview" ? "bg-white text-zinc-950 shadow-2xs" : "text-zinc-600"
+                  }`}
+                >
+                  3 · Cek &amp; Unduh
+                </button>
+              </div>
             </div>
-          </div>
-        ) : null}
-      </header>
+          ) : null
+        }
+      >
+        <PwaInstallButton />
+        <Link href="/" className="app-nav-link">
+          Beranda
+        </Link>
+      </AppHeader>
 
       {!sourceImage || !splitPlan ? (
         <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-4 py-10 sm:px-6">
           <div className="mb-6 text-center">
             <span className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 ring-1 ring-indigo-600/15">
-              Pemotong Grid Instagram Jernih
+              Mulai potong foto
             </span>
             <h1 className="mt-3 text-2xl font-bold tracking-tight text-zinc-950 sm:text-3xl">
-              Bikin Grid Profil Instagram yang Rapi
+              Mulai dari satu foto.
             </h1>
             <p className="mt-2 max-w-lg text-xs leading-relaxed text-zinc-600 sm:text-sm">
-              Pilih 1 foto, geser posisinya, lihat dulu contoh tampilannya di profil Instagram, lalu
-              unduh hasilnya sesuai urutan posting tanpa pecah.
+              Pilih foto atau desain yang ingin kamu jadikan grid Instagram. Setelah itu, atur
+              potongannya dan cek tampilan profil sebelum mengunduh.
             </p>
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-[11px] font-medium text-zinc-600">
-              <span className="rounded-full border border-zinc-200 bg-white px-3 py-1">
-                1. Pilih Foto
-              </span>
-              <span className="rounded-full border border-zinc-200 bg-white px-3 py-1">
-                2. Atur Grid (Otomatis 3×1 · 4:5 Nyambung)
-              </span>
-              <span className="rounded-full border border-zinc-200 bg-white px-3 py-1">
-                3. Unduh &amp; Posting dari #1
-              </span>
+              {PRODUCT_FLOW_STEPS.map((step, index) => (
+                <span
+                  key={step.label}
+                  className="rounded-full border border-zinc-200 bg-white px-3 py-1"
+                >
+                  {index + 1}. {step.label}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -401,8 +373,15 @@ export function EditorWorkspace() {
 
   if (!isClient) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 text-sm text-zinc-500">
-        Memuat ruang kerja editor PotongFeed...
+      <div className="studio-dot-grid flex min-h-screen flex-col text-zinc-900">
+        <AppHeader>
+          <Link href="/" className="app-nav-link">
+            Beranda
+          </Link>
+        </AppHeader>
+        <main className="flex flex-1 items-center justify-center px-4 text-sm text-zinc-500">
+          Memuat ruang kerja editor PotongFeed...
+        </main>
       </div>
     );
   }
